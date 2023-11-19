@@ -17,6 +17,7 @@
 
 package org.apache.linkis.manager.engineplugin.common.launch.process
 
+import org.apache.linkis.governance.common.utils.OnceExecutorContentUtils
 import org.apache.linkis.manager.common.protocol.bml.BmlResource
 import org.apache.linkis.manager.engineplugin.common.conf.EnvConfiguration
 import org.apache.linkis.manager.engineplugin.common.exception.EngineConnBuildFailedException
@@ -30,6 +31,26 @@ import java.util
 import scala.collection.JavaConverters._
 
 trait ProcessEngineConnLaunchBuilder extends EngineConnLaunchBuilder {
+
+  protected def getDependedFiles: util.List[DependedFile] = {
+    if (isOnceMode) {
+      val properties = engineConnBuildRequest.engineConnCreationDesc.properties
+      properties.put(
+        OnceExecutorContentUtils.ONCE_EXECUTOR_CONTENT_FILE_KEY,
+        OnceExecutorContentUtils.ONCE_EXECUTOR_CONTENT_FILE_VALUE
+      )
+
+      val onceExecutorContent =
+        properties.remove(OnceExecutorContentUtils.ONCE_EXECUTOR_CONTENT_JSON_STR_KEY)
+      val dependedFiles = new util.ArrayList[DependedFile]()
+      dependedFiles.add(
+        DependedFile(OnceExecutorContentUtils.ONCE_EXECUTOR_CONTENT_FILE_VALUE, onceExecutorContent)
+      )
+      dependedFiles
+    } else {
+      new util.ArrayList[DependedFile]()
+    }
+  }
 
   protected def getCommands(implicit engineConnBuildRequest: EngineConnBuildRequest): Array[String]
 
@@ -62,6 +83,11 @@ trait ProcessEngineConnLaunchBuilder extends EngineConnLaunchBuilder {
     }
     bmlResources.addAll(getBmlResources)
     val environment = getEnvironment
+    val necessaryEnvironment = getNecessaryEnvironment
+    val engineConnManagerHooks = getEngineConnManagerHooks
+    val dependedFiles = getDependedFiles
+    val commands = getCommands
+    val maxRetries = getMaxRetries
     engineConnBuildRequest.labels.asScala
       .find(_.isInstanceOf[UserCreatorLabel])
       .map { case label: UserCreatorLabel =>
@@ -72,11 +98,12 @@ trait ProcessEngineConnLaunchBuilder extends EngineConnLaunchBuilder {
           engineConnBuildRequest.engineResource,
           bmlResources,
           environment,
-          getNecessaryEnvironment,
+          necessaryEnvironment,
           engineConnBuildRequest.engineConnCreationDesc,
-          getEngineConnManagerHooks,
-          getCommands,
-          getMaxRetries
+          engineConnManagerHooks,
+          dependedFiles,
+          commands,
+          maxRetries
         )
       }
       .getOrElse(

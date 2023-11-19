@@ -18,6 +18,7 @@
 package org.apache.linkis.entrance
 
 import org.apache.linkis.common.exception.ErrorException
+import org.apache.linkis.entrance.execute.EntranceJob
 import org.apache.linkis.governance.common.entity.job.JobRequest
 import org.apache.linkis.scheduler.queue.Job
 
@@ -30,7 +31,7 @@ abstract class EntranceParser {
   def parseToTask(params: java.util.Map[String, AnyRef]): JobRequest
 
   @throws[ErrorException]
-  def parseToJob(jobReq: JobRequest): Job
+  def parseToJob(jobReq: JobRequest): EntranceJob
 
   @throws[ErrorException]
   def parseToJobRequest(job: Job): JobRequest

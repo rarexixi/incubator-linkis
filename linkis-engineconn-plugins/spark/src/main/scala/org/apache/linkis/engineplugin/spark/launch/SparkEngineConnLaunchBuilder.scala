@@ -65,11 +65,6 @@ class SparkEngineConnLaunchBuilder extends JavaProcessEngineConnLaunchBuilder {
     }
   }
 
-  def isOnceMode: Boolean = {
-    val engineConnMode = LabelUtil.getEngineConnMode(engineConnBuildRequest.labels)
-    EngineConnMode.toEngineConnMode(engineConnMode) == EngineConnMode.Once
-  }
-
   override def getEnvironment(implicit
       engineConnBuildRequest: EngineConnBuildRequest
   ): util.Map[String, String] = {

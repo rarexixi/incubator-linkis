@@ -99,7 +99,7 @@ abstract class AccessibleExecutor extends SensibleExecutor {
       .getEngineConnAsyncListenerBus
       .post(ExecutorStatusChangedEvent(this, fromStatus, toStatus))
     toStatus match {
-      case NodeStatus.Failed | NodeStatus.Success =>
+      case NodeStatus.ShuttingDown | NodeStatus.Failed | NodeStatus.Success =>
         ExecutorListenerBusContext
           .getExecutorListenerBusContext()
           .getEngineConnAsyncListenerBus

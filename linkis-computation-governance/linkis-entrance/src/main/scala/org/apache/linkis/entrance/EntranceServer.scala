@@ -29,6 +29,9 @@ import org.apache.linkis.entrance.timeout.JobTimeoutManager
 import org.apache.linkis.entrance.utils.JobHistoryHelper
 import org.apache.linkis.governance.common.entity.job.JobRequest
 import org.apache.linkis.governance.common.utils.LoggerUtils
+import org.apache.linkis.manager.label.entity.engine.EngineConnMode
+import org.apache.linkis.manager.label.utils.LabelUtil
+import org.apache.linkis.orchestrator.ecm.OnceEngineConnManager
 import org.apache.linkis.protocol.constants.TaskConstant
 import org.apache.linkis.rpc.Sender
 import org.apache.linkis.scheduler.queue.{Job, SchedulerEventState}
@@ -57,7 +60,7 @@ abstract class EntranceServer extends Logging {
    * @param params
    * @return
    */
-  def execute(params: java.util.Map[String, AnyRef]): Job = {
+  def execute(params: java.util.Map[String, AnyRef]): EntranceJob = {
     if (!params.containsKey(EntranceServer.DO_NOT_PRINT_PARAMS_LOG)) {
       logger.debug("received a request: " + params)
     } else params.remove(EntranceServer.DO_NOT_PRINT_PARAMS_LOG)
@@ -130,6 +133,38 @@ abstract class EntranceServer extends Logging {
     }
 
     val job = getEntranceContext.getOrCreateEntranceParser().parseToJob(jobRequest)
+
+    val engineConnModeLabel = LabelUtil.getEngineConnModeLabel(jobRequest.getLabels)
+    if (
+        null != engineConnModeLabel && EngineConnMode.isOnceMode(
+          engineConnModeLabel.getEngineConnMode
+        )
+    ) {
+      logger.info(
+        s"The job is a once job, submit to engine the engineConnMode is ${engineConnModeLabel.getEngineConnMode}"
+      )
+      val node = OnceEngineConnManager.submitJob(jobRequest)
+      if (node != null) {
+        val infoMap = new util.HashMap[String, AnyRef]
+
+        infoMap.put(TaskConstant.EXECUTEAPPLICATIONNAME, node.getServiceInstance.getApplicationName)
+        infoMap.put(TaskConstant.ENGINE_INSTANCE, node.getServiceInstance.getInstance)
+        infoMap.put(TaskConstant.TICKET_ID, node.getTicketId)
+        JobHistoryHelper.updateJobRequestMetrics(jobRequest, null, infoMap)
+
+        val jobReqUpdate = new JobRequest
+        jobReqUpdate.setId(jobRequest.getId)
+        jobReqUpdate.setReqId(jobRequest.getReqId)
+        jobReqUpdate.setExecutionCode(jobRequest.getExecutionCode)
+        jobReqUpdate.setMetrics(jobRequest.getMetrics)
+        getEntranceContext
+          .getOrCreatePersistenceManager()
+          .createPersistenceEngine()
+          .updateIfNeeded(jobReqUpdate)
+      }
+      return job
+    }
+
     Utils.tryThrow {
       job.init()
       job.setLogListener(getEntranceContext.getOrCreateLogManager())
@@ -160,15 +195,12 @@ abstract class EntranceServer extends Logging {
       )
       logger.info(msg)
 
-      job match {
-        case entranceJob: EntranceJob =>
-          entranceJob.getJobRequest.setReqId(job.getId())
-          if (jobTimeoutManager.timeoutCheck && JobTimeoutManager.hasTimeoutLabel(entranceJob)) {
-            jobTimeoutManager.add(job.getId(), entranceJob)
-          }
-          entranceJob.getLogListener.foreach(_.onLogUpdate(entranceJob, msg))
-        case _ =>
+      job.getJobRequest.setReqId(job.getId())
+      if (jobTimeoutManager.timeoutCheck && JobTimeoutManager.hasTimeoutLabel(job)) {
+        jobTimeoutManager.add(job.getId(), job)
       }
+      job.getLogListener.foreach(_.onLogUpdate(job, msg))
+
       LoggerUtils.removeJobIdMDC()
       job
     } { t =>

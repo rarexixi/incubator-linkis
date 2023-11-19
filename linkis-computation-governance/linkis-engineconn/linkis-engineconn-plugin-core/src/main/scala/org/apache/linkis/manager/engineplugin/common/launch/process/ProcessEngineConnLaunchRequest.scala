@@ -37,9 +37,13 @@ trait ProcessEngineConnLaunchRequest extends EngineConnLaunchRequest {
 
   val commands: Array[String]
 
+  val dependedFiles: util.List[DependedFile]
+
   val maxRetries: Int
 
 }
+
+case class DependedFile(filePath: String, content: String)
 
 case class CommonProcessEngineConnLaunchRequest(
     ticketId: String,
@@ -51,6 +55,7 @@ case class CommonProcessEngineConnLaunchRequest(
     necessaryEnvironments: Array[String],
     creationDesc: EngineConnCreationDesc,
     engineConnManagerHooks: util.List[String],
+    dependedFiles: util.List[DependedFile],
     commands: Array[String],
     maxRetries: Int = 1
 ) extends ProcessEngineConnLaunchRequest

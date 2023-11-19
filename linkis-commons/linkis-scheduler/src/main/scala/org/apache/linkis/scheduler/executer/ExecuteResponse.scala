@@ -20,6 +20,7 @@ package org.apache.linkis.scheduler.executer
 trait ExecuteResponse
 trait CompletedExecuteResponse extends ExecuteResponse
 case class SuccessExecuteResponse() extends CompletedExecuteResponse
+case class CancelExecuteResponse() extends CompletedExecuteResponse
 
 trait OutputExecuteResponse extends ExecuteResponse {
   def getOutput: String

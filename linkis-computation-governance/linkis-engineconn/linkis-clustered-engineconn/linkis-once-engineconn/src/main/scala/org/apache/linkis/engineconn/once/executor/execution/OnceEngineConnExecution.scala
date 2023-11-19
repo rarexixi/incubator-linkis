@@ -36,6 +36,7 @@ import org.apache.linkis.manager.label.entity.engine.{
 import org.apache.linkis.manager.label.entity.engine.EngineConnMode._
 import org.apache.linkis.scheduler.executer.{
   AsynReturnExecuteResponse,
+  CancelExecuteResponse,
   ErrorExecuteResponse,
   ExecuteResponse,
   SuccessExecuteResponse
@@ -73,6 +74,8 @@ class OnceEngineConnExecution extends AbstractEngineConnExecution {
       resp.notify(dealResponse(_, false))
     case _: SuccessExecuteResponse =>
       onceExecutor.trySucceed()
+    case _: CancelExecuteResponse =>
+      onceExecutor.tryShutdown()
     case ErrorExecuteResponse(message, t) =>
       if (!onceExecutor.isClosed) {
         dealException(message, t, throwsException)

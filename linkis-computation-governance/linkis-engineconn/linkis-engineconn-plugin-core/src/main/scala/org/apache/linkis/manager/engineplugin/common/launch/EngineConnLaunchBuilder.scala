@@ -21,13 +21,19 @@ import org.apache.linkis.manager.engineplugin.common.launch.entity.{
   EngineConnBuildRequest,
   EngineConnLaunchRequest
 }
+import org.apache.linkis.manager.label.entity.engine.EngineConnMode
+import org.apache.linkis.manager.label.utils.LabelUtil
 
 trait EngineConnLaunchBuilder {
 
   protected var engineConnBuildRequest: EngineConnBuildRequest = _
+  protected var isOnceMode = false
 
-  def setBuildRequest(engineConnBuildRequest: EngineConnBuildRequest): Unit =
+  def setBuildRequest(engineConnBuildRequest: EngineConnBuildRequest): Unit = {
     this.engineConnBuildRequest = engineConnBuildRequest
+    val engineConnMode = LabelUtil.getEngineConnMode(engineConnBuildRequest.labels)
+    isOnceMode = EngineConnMode.isOnceMode(engineConnMode)
+  }
 
   def buildEngineConn(): EngineConnLaunchRequest
 

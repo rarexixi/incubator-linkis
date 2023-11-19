@@ -17,6 +17,7 @@
 
 package org.apache.linkis.manager.label.entity.engine
 
+import org.apache.linkis.manager.label.constant.LabelKeyConstant
 import org.apache.linkis.manager.label.entity.{EngineNodeLabel, Feature, GenericLabel}
 import org.apache.linkis.manager.label.entity.annon.ValueSerialNum
 
@@ -24,19 +25,19 @@ import java.util
 
 class EngineConnModeLabel extends GenericLabel with EngineNodeLabel {
 
-  setLabelKey("engineConnMode")
+  setLabelKey(LabelKeyConstant.ENGINE_CONN_MODE_KEY)
 
   override def getFeature: Feature = Feature.CORE
 
   @ValueSerialNum(0)
   def setEngineConnMode(engineConnMode: String): Unit = {
     if (null == getValue) setValue(new util.HashMap[String, String])
-    getValue.put("engineConnMode", engineConnMode)
+    getValue.put(LabelKeyConstant.ENGINE_CONN_MODE_KEY, engineConnMode)
   }
 
   def getEngineConnMode: String = {
     if (null == getValue) return null
-    getValue.get("engineConnMode")
+    getValue.get(LabelKeyConstant.ENGINE_CONN_MODE_KEY)
   }
 
 }

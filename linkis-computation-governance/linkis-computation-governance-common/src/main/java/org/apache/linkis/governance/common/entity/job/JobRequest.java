@@ -53,6 +53,8 @@ public class JobRequest {
 
   private Map<String, Object> metrics = new HashMap<>();
 
+  private Map<String, Object> executionContent;
+
   public Long getId() {
     return id;
   }
@@ -203,6 +205,14 @@ public class JobRequest {
 
   public void setObserveInfo(String observeInfo) {
     this.observeInfo = observeInfo;
+  }
+
+  public Map<String, Object> getExecutionContent() {
+    return executionContent;
+  }
+
+  public void setExecutionContent(Map<String, Object> executionContent) {
+    this.executionContent = executionContent;
   }
 
   @Override

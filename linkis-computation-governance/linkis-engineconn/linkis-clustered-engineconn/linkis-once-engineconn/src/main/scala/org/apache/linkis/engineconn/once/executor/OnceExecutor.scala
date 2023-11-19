@@ -21,17 +21,22 @@ import org.apache.linkis.bml.client.BmlClientFactory
 import org.apache.linkis.common.conf.Configuration
 import org.apache.linkis.common.utils.{Logging, Utils}
 import org.apache.linkis.engineconn.acessible.executor.entity.AccessibleExecutor
+import org.apache.linkis.engineconn.common.conf.EngineConnConf
 import org.apache.linkis.engineconn.common.creation.EngineCreationContext
 import org.apache.linkis.engineconn.core.EngineConnObject
 import org.apache.linkis.engineconn.core.hook.ShutdownHook
 import org.apache.linkis.engineconn.core.util.EngineConnUtils
+import org.apache.linkis.engineconn.executor.conf.EngineConnExecutorConfiguration
 import org.apache.linkis.engineconn.executor.entity.{
   ExecutableExecutor,
   LabelExecutor,
   ResourceExecutor
 }
 import org.apache.linkis.engineconn.executor.service.ManagerService
+import org.apache.linkis.engineconn.launch.EngineConnServer
 import org.apache.linkis.engineconn.once.executor.exception.OnceEngineConnErrorException
+import org.apache.linkis.engineconn.once.executor.service.JobHistoryService
+import org.apache.linkis.governance.common.entity.ExecutionNodeStatus
 import org.apache.linkis.governance.common.protocol.task.RequestTask
 import org.apache.linkis.governance.common.utils.OnceExecutorContentUtils
 import org.apache.linkis.manager.common.entity.enumeration.NodeStatus
@@ -41,6 +46,7 @@ import org.apache.linkis.manager.label.entity.{JobLabel, Label}
 import org.apache.linkis.rpc.Sender
 import org.apache.linkis.scheduler.executer.{
   AsynReturnExecuteResponse,
+  CancelExecuteResponse,
   ErrorExecuteResponse,
   ExecuteResponse,
   SuccessExecuteResponse
@@ -49,6 +55,7 @@ import org.apache.linkis.scheduler.executer.{
 import org.apache.commons.io.IOUtils
 import org.apache.commons.lang3.StringUtils
 
+import java.nio.file.{Files, Paths}
 import java.util
 
 import scala.collection.convert.wrapAsScala._
@@ -74,33 +81,43 @@ trait OnceExecutor extends ExecutableExecutor[ExecuteResponse] with LabelExecuto
   def execute(onceExecutorExecutionContext: OnceExecutorExecutionContext): ExecuteResponse
 
   protected def createOnceExecutorExecutionContext(
-      engineCreationContext: EngineCreationContext
+      context: EngineCreationContext
   ): OnceExecutorExecutionContext = {
-    val resource =
-      engineCreationContext.getOptions.get(OnceExecutorContentUtils.ONCE_EXECUTOR_CONTENT_KEY)
-    if (StringUtils.isEmpty(resource)) {
-      throw new OnceEngineConnErrorException(
-        12560,
-        OnceExecutorContentUtils.ONCE_EXECUTOR_CONTENT_KEY + " is not exist."
-      )
-    }
-    val bmlResource = OnceExecutorContentUtils.valueToResource(resource)
-    val bmlClient = BmlClientFactory.createBmlClient(engineCreationContext.getUser)
-    val contentStr = Utils.tryFinally {
-      val inputStream = bmlClient
-        .downloadResource(
-          engineCreationContext.getUser,
-          bmlResource.getResourceId,
-          bmlResource.getVersion
+    var contentStr = ""
+    if (context.getOptions.containsKey(OnceExecutorContentUtils.ONCE_EXECUTOR_CONTENT_FILE_KEY)) {
+      val resourceFile =
+        context.getOptions.get(OnceExecutorContentUtils.ONCE_EXECUTOR_CONTENT_FILE_KEY)
+      if (StringUtils.isNotEmpty(resourceFile)) {
+        val path = Paths.get(EngineConnConf.getWorkHome, resourceFile)
+        if (!Files.exists(path)) {
+          throw new OnceEngineConnErrorException(12560, path + " is not exist.")
+        }
+        val bytes = Files.readAllBytes(path)
+        contentStr = new String(bytes, Configuration.BDP_ENCODING.getValue)
+      }
+    } else {
+      val contentKey = OnceExecutorContentUtils.ONCE_EXECUTOR_CONTENT_KEY
+      val resource = context.getOptions.get(contentKey)
+      if (StringUtils.isEmpty(resource)) {
+        throw new OnceEngineConnErrorException(12560, contentKey + " is not exist.")
+      }
+      val bmlResource = OnceExecutorContentUtils.valueToResource(resource)
+      val bmlClient = BmlClientFactory.createBmlClient(context.getUser)
+      contentStr = Utils.tryFinally {
+        val inputStream = bmlClient
+          .downloadResource(context.getUser, bmlResource.getResourceId, bmlResource.getVersion)
+          .inputStream
+        Utils.tryFinally(IOUtils.toString(inputStream, Configuration.BDP_ENCODING.getValue))(
+          IOUtils.closeQuietly(inputStream)
         )
-        .inputStream
-      Utils.tryFinally(IOUtils.toString(inputStream, Configuration.BDP_ENCODING.getValue))(
-        IOUtils.closeQuietly(inputStream)
-      )
-    }(bmlClient.close())
+      }(bmlClient.close())
+    }
+    if (StringUtils.isBlank(contentStr)) {
+      throw new OnceEngineConnErrorException(12560, "Once executor content is not blank.")
+    }
     val contentMap = EngineConnUtils.GSON.fromJson(contentStr, classOf[util.Map[String, Object]])
     val onceExecutorContent = OnceExecutorContentUtils.mapToContent(contentMap)
-    new OnceExecutorExecutionContext(engineCreationContext, onceExecutorContent)
+    new OnceExecutorExecutionContext(context, onceExecutorContent)
   }
 
   protected def initOnceExecutorExecutionContext(
@@ -140,6 +157,7 @@ trait ManageableOnceExecutor extends AccessibleExecutor with OnceExecutor with R
 
   private val notifyListeners = new ArrayBuffer[ExecuteResponse => Unit]
   private var response: ExecuteResponse = _
+  private var jobId: Long = 0
 
   override def tryReady(): Boolean = {
     transition(NodeStatus.Running)
@@ -149,8 +167,13 @@ trait ManageableOnceExecutor extends AccessibleExecutor with OnceExecutor with R
   override def execute(
       onceExecutorExecutionContext: OnceExecutorExecutionContext
   ): ExecuteResponse = {
+    jobId = EngineConnExecutorConfiguration.JOB_ID.getValue(
+      EngineConnServer.getEngineCreationContext.getOptions
+    )
     submit(onceExecutorExecutionContext)
+    JobHistoryService.updateStatus(jobId, ExecutionNodeStatus.Scheduled.name())
     waitToRunning()
+    JobHistoryService.updateStatus(jobId, ExecutionNodeStatus.Running.name())
     transition(NodeStatus.Busy)
     new AsynReturnExecuteResponse {
       override def notify(rs: ExecuteResponse => Unit): Unit = notifyListeners += rs
@@ -171,6 +194,7 @@ trait ManageableOnceExecutor extends AccessibleExecutor with OnceExecutor with R
     if (NodeStatus.isCompleted(toStatus)) {
       if (response == null) toStatus match {
         case NodeStatus.Success => response = SuccessExecuteResponse()
+        case NodeStatus.ShuttingDown => response = CancelExecuteResponse()
         case _ => response = ErrorExecuteResponse("Unknown reason.", null)
       }
       Utils.tryFinally(notifyListeners.foreach(_(getResponse)))(this synchronized notifyAll)
@@ -178,13 +202,25 @@ trait ManageableOnceExecutor extends AccessibleExecutor with OnceExecutor with R
     super.onStatusChanged(fromStatus, toStatus)
   }
 
-  override def tryShutdown(): Boolean = tryFailed()
+  override def tryShutdown(): Boolean = {
+    if (isClosed) return true
+    val msg = s"$getId has failed with old status $getStatus, now stop it."
+    logger.warn(msg)
+    Utils.tryFinally {
+      JobHistoryService.updateStatus(jobId, ExecutionNodeStatus.Cancelled.name())
+      this.ensureAvailable(transition(NodeStatus.ShuttingDown))
+      close()
+    }(stopOnceExecutor(msg))
+
+    true
+  }
 
   def tryFailed(): Boolean = {
     if (isClosed) return true
     val msg = s"$getId has failed with old status $getStatus, now stop it."
     logger.error(msg)
     Utils.tryFinally {
+      JobHistoryService.updateStatus(jobId, ExecutionNodeStatus.Failed.name())
       this.ensureAvailable(transition(NodeStatus.Failed))
       close()
     }(stopOnceExecutor(msg))
@@ -194,8 +230,9 @@ trait ManageableOnceExecutor extends AccessibleExecutor with OnceExecutor with R
   def trySucceed(): Boolean = {
     if (isClosed) return true
     val msg = s"$getId has succeed with old status $getStatus, now stop it."
-    logger.warn(msg)
+    logger.info(msg)
     Utils.tryFinally {
+      JobHistoryService.updateStatus(jobId, ExecutionNodeStatus.Succeed.name())
       this.ensureAvailable(transition(NodeStatus.Success))
       close()
     }(stopOnceExecutor(msg))

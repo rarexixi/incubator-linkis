@@ -26,6 +26,9 @@ import java.util
 object OnceExecutorContentUtils {
 
   val ONCE_EXECUTOR_CONTENT_KEY = "onceExecutorContent"
+  val ONCE_EXECUTOR_CONTENT_JSON_STR_KEY = "onceExecutorContentJsonStr"
+  val ONCE_EXECUTOR_CONTENT_FILE_KEY = "onceExecutorContentFile"
+  val ONCE_EXECUTOR_CONTENT_FILE_VALUE = "onceExecutorContent.json"
   private val HEADER = "resource_"
   private val LEN = 3
 

@@ -23,9 +23,15 @@ import org.apache.linkis.governance.common.entity.job.{JobRequest, OnceExecutorC
 import org.apache.linkis.governance.common.utils.OnceExecutorContentUtils
 import org.apache.linkis.governance.common.utils.OnceExecutorContentUtils.BmlResource
 import org.apache.linkis.manager.label.builder.factory.LabelBuilderFactoryContext
+import org.apache.linkis.manager.label.constant.LabelKeyConstant
 import org.apache.linkis.manager.label.entity.JobLabel
-import org.apache.linkis.manager.label.entity.engine.{CodeLanguageLabel, EngineConnModeLabel}
+import org.apache.linkis.manager.label.entity.engine.{
+  CodeLanguageLabel,
+  EngineConnModeLabel,
+  RunType
+}
 import org.apache.linkis.manager.label.entity.engine.EngineConnMode._
+import org.apache.linkis.manager.label.utils.LabelUtil
 import org.apache.linkis.protocol.constants.TaskConstant
 import org.apache.linkis.protocol.utils.TaskUtils
 import org.apache.linkis.server.BDPJettyServerHelper
@@ -49,45 +55,53 @@ class OnceJobInterceptor extends EntranceInterceptor {
    * supplement, custom variable substitution, code check, limit limit, etc.
    * apply函数是对传入参数task进行信息的补充，使得这个task的内容更加完整。 补充的信息包括: 数据库信息补充、自定义变量替换、代码检查、limit限制等
    *
-   * @param task
+   * @param jobRequest
    * @param logAppender
    *   Used to cache the necessary reminder logs and pass them to the upper layer(用于缓存必要的提醒日志，传给上层)
    * @return
    */
-  override def apply(task: JobRequest, logAppender: lang.StringBuilder): JobRequest = {
-    val existsOnceLabel = task.getLabels.exists {
+  override def apply(jobRequest: JobRequest, logAppender: lang.StringBuilder): JobRequest = {
+    val existsOnceLabel = jobRequest.getLabels.exists {
       case e: EngineConnModeLabel => onceModes.contains(e.getEngineConnMode)
       case _ => false
     }
-    if (!existsOnceLabel) return task
+    if (!existsOnceLabel) return jobRequest
+
+    val codeType = {
+      val codeType = LabelUtil.getCodeType(jobRequest.getLabels)
+      if (null != codeType) {
+        codeType.toLowerCase()
+      } else {
+        ""
+      }
+    }
     val jobLabel =
       LabelBuilderFactoryContext.getLabelBuilderFactory.createLabel(classOf[JobLabel])
-    jobLabel.setJobId(task.getId.toString)
-    task.getLabels.add(jobLabel)
+    jobLabel.setJobId(jobRequest.getId.toString)
+    jobRequest.getLabels.add(jobLabel)
     val onceExecutorContent = new OnceExecutorContent
-    val params = task.getParams
+    val params = jobRequest.getParams
 
-    onceExecutorContent.setSourceMap(task.getSource.map { case (k, v) =>
+    onceExecutorContent.setSourceMap(jobRequest.getSource.map { case (k, v) =>
       k -> v.asInstanceOf[Object]
     })
     onceExecutorContent.setVariableMap(TaskUtils.getVariableMap(params))
     onceExecutorContent.setRuntimeMap(TaskUtils.getRuntimeMap(params))
-    onceExecutorContent.setJobContent(getJobContent(task))
+    onceExecutorContent.setJobContent(getJobContent(jobRequest))
     onceExecutorContent.setExtraLabels(new util.HashMap[String, AnyRef]) // TODO Set it if needed
     val contentMap = OnceExecutorContentUtils.contentToMap(onceExecutorContent)
-    val bytes = BDPJettyServerHelper.jacksonJson.writeValueAsBytes(contentMap)
-    val response = bmlClient.uploadResource(
-      task.getExecuteUser,
-      getFilePath(task),
-      new ByteArrayInputStream(bytes)
-    )
-    val value =
-      OnceExecutorContentUtils.resourceToValue(BmlResource(response.resourceId, response.version))
+
+    val onceExecutorContentJsonStr = BDPJettyServerHelper.jacksonJson.writeValueAsString(contentMap)
+    val contentKey = OnceExecutorContentUtils.ONCE_EXECUTOR_CONTENT_JSON_STR_KEY
     TaskUtils.addStartupMap(
       params,
-      Map(OnceExecutorContentUtils.ONCE_EXECUTOR_CONTENT_KEY -> value.asInstanceOf[Object])
+      Map(
+        contentKey -> onceExecutorContentJsonStr,
+        "label." + LabelKeyConstant.CODE_TYPE_KEY -> codeType,
+        "linkis.job.id" -> jobRequest.getId.toString
+      )
     )
-    task
+    jobRequest
   }
 
   protected def getFilePath(task: JobRequest): String =
@@ -95,13 +109,7 @@ class OnceJobInterceptor extends EntranceInterceptor {
 
   protected def getJobContent(task: JobRequest): util.Map[String, AnyRef] = {
     val jobContent = new util.HashMap[String, AnyRef]
-    jobContent.putAll(TaskUtils.getStartupMap(task.getParams))
-    jobContent.put(TaskConstant.CODE, task.getExecutionCode)
-    task.getLabels.foreach {
-      case label: CodeLanguageLabel =>
-        jobContent.put(TaskConstant.RUNTYPE, label.getCodeType)
-      case _ =>
-    }
+    jobContent.putAll(task.getExecutionContent)
     jobContent
   }
 

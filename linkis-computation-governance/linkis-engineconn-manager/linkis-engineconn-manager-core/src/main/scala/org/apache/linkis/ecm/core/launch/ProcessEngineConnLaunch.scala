@@ -36,10 +36,11 @@ import org.apache.linkis.manager.engineplugin.common.launch.process.{
 import org.apache.linkis.manager.engineplugin.common.launch.process.Environment._
 import org.apache.linkis.manager.engineplugin.common.launch.process.LaunchConstants._
 
-import org.apache.commons.io.FileUtils
+import org.apache.commons.io.{FileUtils, IOUtils}
 import org.apache.commons.lang3.StringUtils
 
 import java.io.{File, InputStream, OutputStream}
+import java.nio.charset.StandardCharsets
 
 import scala.collection.JavaConverters._
 import scala.collection.mutable
@@ -135,6 +136,7 @@ trait ProcessEngineConnLaunch extends EngineConnLaunch with Logging {
         ) // TODO exception
       } else request.environment.put(e, env.getValue)
     }
+    prepareDependedFiles()
     prepareCommand()
     val exec = newProcessEngineConnCommandExec(
       sudoCommand(request.user, execFile.mkString(" ")),
@@ -207,6 +209,20 @@ trait ProcessEngineConnLaunch extends EngineConnLaunch with Logging {
     } else {
       false
     }
+  }
+
+  private def prepareDependedFiles(): Unit = {
+    logger.info("Prepare depended files {}", request.dependedFiles)
+    if (request.dependedFiles == null) {
+      return
+    }
+    request.dependedFiles.asScala.foreach(dependence => {
+      val file = new File(engineConnManagerEnv.engineConnWorkDir, dependence.filePath).getPath
+      val output = FileUtils.openOutputStream(new File(file))
+      Utils.tryFinally(IOUtils.write(dependence.content, output, StandardCharsets.UTF_8))(
+        output.close()
+      )
+    })
   }
 
   protected def prepareCommand(): Unit = {

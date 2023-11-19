@@ -343,9 +343,8 @@ object CodeType extends Enumeration {
   val Python, SQL, Scala, Shell, Other, Remain, JSON = Value
 
   def getType(codeType: String): CodeType = {
-    val languageTypeType = CodeAndRunTypeUtils.getLanguageTypeAndCodeTypeRelationMap(
-      codeType.toLowerCase(Locale.getDefault)
-    )
+    val map = CodeAndRunTypeUtils.getLanguageTypeAndCodeTypeRelationMap
+    val languageTypeType = map.getOrElse(codeType.toLowerCase(Locale.getDefault), "")
     languageTypeType match {
       case CodeAndRunTypeUtils.LANGUAGE_TYPE_PYTHON => Python
       case CodeAndRunTypeUtils.LANGUAGE_TYPE_SQL => SQL

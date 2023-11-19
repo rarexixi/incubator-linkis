@@ -66,4 +66,18 @@ object EngineConnExecutorConfiguration {
   val DEFAULT_EXECUTOR_NAME =
     CommonVars("wds.linkis.engineconn.executor.default.name", "ComputationExecutor")
 
+  val JOBHISTORY_SPRING_APPLICATION_NAME =
+    CommonVars("wds.linkis.jobhistory.application.name", "linkis-ps-jobhistory")
+
+  val JOBINFO_UPDATE_RETRY_MAX_TIME =
+    CommonVars[Integer]("wds.linkis.entrance.jobinfo.update.retry.max.times", 3)
+
+  val JOBINFO_UPDATE_RETRY_INTERVAL =
+    CommonVars[Long]("wds.linkis.entrance.jobinfo.update.retry.interval", 2 * 60 * 1000L)
+
+  val ERROR_CODE_DESC_LEN =
+    CommonVars("linkis.error.code.desc.len", 512, "Error code description maximum length").getValue
+
+  val JOB_ID = CommonVars("linkis.job.id", 0L)
+
 }

@@ -107,7 +107,7 @@ public abstract class AbstractEntranceParser extends EntranceParser {
    * @return
    */
   @Override
-  public Job parseToJob(JobRequest jobReq) throws EntranceIllegalParamException {
+  public EntranceJob parseToJob(JobRequest jobReq) throws EntranceIllegalParamException {
     if (jobReq == null) {
       throw new EntranceIllegalParamException(
           JOBREQ_NOT_NULL.getErrorCode(), JOBREQ_NOT_NULL.getErrorDesc());

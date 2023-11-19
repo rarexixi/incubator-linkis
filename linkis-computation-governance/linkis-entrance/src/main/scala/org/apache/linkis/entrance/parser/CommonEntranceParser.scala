@@ -35,7 +35,12 @@ import org.apache.linkis.manager.label.conf.LabelCommonConfig
 import org.apache.linkis.manager.label.constant.LabelKeyConstant
 import org.apache.linkis.manager.label.entity.Label
 import org.apache.linkis.manager.label.entity.cluster.ClusterLabel
-import org.apache.linkis.manager.label.entity.engine.{CodeLanguageLabel, UserCreatorLabel}
+import org.apache.linkis.manager.label.entity.engine.{
+  CodeLanguageLabel,
+  EngineConnMode,
+  RunType,
+  UserCreatorLabel
+}
 import org.apache.linkis.manager.label.utils.EngineTypeLabelCreator
 import org.apache.linkis.protocol.constants.TaskConstant
 import org.apache.linkis.scheduler.queue.SchedulerEventState
@@ -94,25 +99,23 @@ class CommonEntranceParser(val persistenceManager: PersistenceManager)
         s"${EntranceErrorCode.PARAM_CANNOT_EMPTY.getDesc},  labels is null"
       )
     }
+    val engineConnMode =
+      labelMap.getOrDefault(LabelKeyConstant.ENGINE_CONN_MODE_KEY, "").asInstanceOf[String]
+
     // 3. set Code
-    var code: String = null
-    var runType: String = null
-    if (executionContent.containsKey(TaskConstant.CODE)) {
-      code = executionContent.get(TaskConstant.CODE).asInstanceOf[String]
-      runType = executionContent.get(TaskConstant.RUNTYPE).asInstanceOf[String]
-      if (StringUtils.isBlank(code)) {
+    var code: String = executionContent.getOrDefault(TaskConstant.CODE, "").asInstanceOf[String]
+    val runType: String = executionContent.get(TaskConstant.RUNTYPE).asInstanceOf[String]
+
+    if (StringUtils.isBlank(code)) {
+      if (RunType.isTextCode(runType) && !EngineConnMode.isOnceMode(engineConnMode)) {
         throw new EntranceIllegalParamException(
           PARAM_NOT_NULL.getErrorCode,
           PARAM_NOT_NULL.getErrorDesc
         )
       }
-    } else {
-      // todo check
-      throw new EntranceIllegalParamException(
-        ONLY_CODE_SUPPORTED.getErrorCode,
-        PARAM_NOT_NULL.getErrorDesc
-      )
+      code = ""
     }
+
     val formatCode = params.get(TaskConstant.FORMATCODE).asInstanceOf[Boolean]
     if (formatCode) code = format(code)
     jobRequest.setExecutionCode(code)
