@@ -31,14 +31,21 @@ import org.apache.linkis.engineconn.common.engineconn.EngineConn
 import org.apache.linkis.engineconn.common.hook.EngineConnHook
 import org.apache.linkis.engineconn.core.executor.ExecutorManager
 import org.apache.linkis.engineconn.core.hook.ShutdownHook
+import org.apache.linkis.governance.common.constant.job.JobRequestConstants
+import org.apache.linkis.governance.common.entity.ExecutionNodeStatus
 import org.apache.linkis.manager.common.entity.enumeration.NodeStatus
-import org.apache.linkis.manager.common.protocol.engine.EngineConnStatusCallback
+import org.apache.linkis.manager.common.protocol.engine.{
+  EngineConnStatusCallback,
+  OnceJobStatusCallback
+}
+import org.apache.linkis.manager.label.entity.engine.{EngineConnMode, EngineConnModeLabel}
 import org.apache.linkis.rpc.Sender
 import org.apache.linkis.server.conf.ServerConfiguration
 
 import org.apache.commons.lang3.StringUtils
 import org.apache.commons.lang3.exception.ExceptionUtils
 
+import scala.collection.JavaConverters.asScalaBufferConverter
 import scala.collection.mutable
 
 class CallbackEngineConnHook extends EngineConnHook with Logging {
@@ -93,6 +100,32 @@ class CallbackEngineConnHook extends EngineConnHook with Logging {
         )
       )
     )
+
+    engineCreationContext.getLabels().asScala.find(_.isInstanceOf[EngineConnModeLabel]) match {
+      case Some(engineConnModeLabel) =>
+        Utils.tryQuietly {
+          if (
+              !EngineConnMode.isOnceMode(
+                engineConnModeLabel.asInstanceOf[EngineConnModeLabel].getEngineConnMode
+              )
+          ) {
+            return
+          }
+          val jobId = engineCreationContext.getOptions.getOrDefault(JobRequestConstants.JOB_ID, "")
+          if (StringUtils.isBlank(jobId)) {
+            return
+          }
+          engineConnAfterStartCallback.callback(
+            new OnceJobStatusCallback(
+              jobId.toLong,
+              ExecutionNodeStatus.Failed,
+              prefixMsg + ExceptionUtils.getRootCauseMessage(throwable)
+            )
+          )
+        }
+      case None =>
+    }
+
     logger.error("EngineConnSever start failed! now exit.", throwable)
     ShutdownHook.getShutdownHook.notifyError(throwable)
   }

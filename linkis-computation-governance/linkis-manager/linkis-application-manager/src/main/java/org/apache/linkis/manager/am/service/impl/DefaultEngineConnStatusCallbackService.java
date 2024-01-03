@@ -19,6 +19,7 @@ package org.apache.linkis.manager.am.service.impl;
 
 import org.apache.linkis.manager.am.conf.AMConfiguration;
 import org.apache.linkis.manager.am.service.EngineConnStatusCallbackService;
+import org.apache.linkis.manager.am.service.JobHistoryService;
 import org.apache.linkis.manager.am.service.engine.EngineStopService;
 import org.apache.linkis.manager.am.utils.AMUtils;
 import org.apache.linkis.manager.common.constant.AMConstant;
@@ -26,6 +27,7 @@ import org.apache.linkis.manager.common.entity.enumeration.NodeStatus;
 import org.apache.linkis.manager.common.entity.metrics.AMNodeMetrics;
 import org.apache.linkis.manager.common.protocol.engine.EngineConnStatusCallback;
 import org.apache.linkis.manager.common.protocol.engine.EngineConnStatusCallbackToAM;
+import org.apache.linkis.manager.common.protocol.engine.OnceJobStatusCallback;
 import org.apache.linkis.manager.persistence.NodeMetricManagerPersistence;
 import org.apache.linkis.manager.service.common.metrics.MetricsConverter;
 import org.apache.linkis.rpc.message.annotation.Receiver;
@@ -72,6 +74,16 @@ public class DefaultEngineConnStatusCallbackService implements EngineConnStatusC
               protocol.getInitErrorMsg(),
               false));
     }
+  }
+
+  @Receiver
+  public void dealOnceJobStatusCallback(OnceJobStatusCallback protocol) {
+    logger.info(
+        "Handle onceJobConnStatus callback jobId: [{}] status: [{}]",
+        protocol.getJobId(),
+        protocol.getStatus());
+    JobHistoryService.INSTANCE.updateStatus(
+        protocol.getJobId(), protocol.getStatus().toString(), protocol.getInitErrorMsg());
   }
 
   @Receiver

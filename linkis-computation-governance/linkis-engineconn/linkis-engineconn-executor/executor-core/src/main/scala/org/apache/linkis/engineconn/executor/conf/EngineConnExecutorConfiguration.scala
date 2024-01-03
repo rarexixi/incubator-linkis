@@ -18,6 +18,7 @@
 package org.apache.linkis.engineconn.executor.conf
 
 import org.apache.linkis.common.conf.{CommonVars, TimeType}
+import org.apache.linkis.governance.common.constant.job.JobRequestConstants
 
 object EngineConnExecutorConfiguration {
 
@@ -78,6 +79,6 @@ object EngineConnExecutorConfiguration {
   val ERROR_CODE_DESC_LEN =
     CommonVars("linkis.error.code.desc.len", 512, "Error code description maximum length").getValue
 
-  val JOB_ID = CommonVars("linkis.job.id", 0L)
+  val JOB_ID = CommonVars(JobRequestConstants.JOB_ID, 0L)
 
 }

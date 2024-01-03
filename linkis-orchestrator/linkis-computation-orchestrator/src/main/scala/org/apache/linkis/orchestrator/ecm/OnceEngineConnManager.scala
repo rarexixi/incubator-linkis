@@ -18,7 +18,7 @@
 package org.apache.linkis.orchestrator.ecm
 
 import org.apache.linkis.common.ServiceInstance
-import org.apache.linkis.common.exception.LinkisRetryException
+import org.apache.linkis.common.exception.{LinkisException, LinkisRetryException}
 import org.apache.linkis.common.utils.{ByteTimeUtils, Logging, Utils}
 import org.apache.linkis.governance.common.conf.GovernanceCommonConf
 import org.apache.linkis.governance.common.entity.job.JobRequest
@@ -62,6 +62,11 @@ object OnceEngineConnManager extends Logging {
             s"${job.getId} Success to ask engineCreateRequest $engineCreateRequest, engineNode: $engineNode"
           )
           return engineNode
+        } else {
+          throw new ECMPluginErrorException(
+            ECMPluginConf.ECM_ERROR_CODE,
+            s"Create EC failed with request(创建EC失败): $engineCreateRequest"
+          )
         }
       } catch {
         case t: LinkisRetryException =>
@@ -70,6 +75,11 @@ object OnceEngineConnManager extends Logging {
             s"${job.getId} Failed to engineCreateRequest time taken ($taken), ${t.getMessage}"
           )
           retryException = t
+        case linkisException: LinkisException =>
+          throw new ECMPluginErrorException(
+            ECMPluginConf.ECM_ERROR_CODE,
+            s"Create EC failed with request(创建EC失败): ${linkisException.getDesc}"
+          )
         case t: Throwable =>
           val taken = ByteTimeUtils.msDurationToString(System.currentTimeMillis - start)
           logger.warn(s"${job.getId} Failed to engineCreateRequest time taken ($taken)")
@@ -93,7 +103,7 @@ object OnceEngineConnManager extends Logging {
     }
     val engineconnMap = job.getMetrics.getOrDefault("engineconnMap", null)
     engineconnMap match {
-      case ecMap: util.Map[String, Object] => {
+      case ecMap: util.Map[String, Object] =>
         if (!ecMap.isEmpty) {
           ecMap.values.toArray()(0) match {
             case map: util.Map[String, String] =>
@@ -126,12 +136,19 @@ object OnceEngineConnManager extends Logging {
                       throw t
                   }
                 }
+              } else {
+                logger.warn(
+                  s"Kill job ${job.getId}, appName: $appName, engineInstance: $engineInstance, ticketId: $ticketId"
+                )
               }
             case _ =>
+              logger.warn(s"Skip killing, job ${job.getId}  ecMap: ${ecMap}")
           }
+        } else {
+          logger.warn(s"Skip killing, job ${job.getId}  ecMap: ${ecMap}")
         }
-      }
       case _ =>
+        logger.warn(s"Skip killing, job ${job.getId}  job metrics: ${job.getMetrics}")
     }
   }
 
@@ -156,8 +173,10 @@ object OnceEngineConnManager extends Logging {
       case engineNode: EngineNode =>
         logger.debug(s"Succeed to create engineNode $engineNode jobId: ${job.getId}")
         (engineNode, true)
+      case t: Throwable =>
+        throw t
       case _ =>
-        logger.info(
+        logger.error(
           s"${job.getId} Failed to ask engineCreateRequest ${engineCreateRequest}, response is not engineNode"
         )
         (null, false)

@@ -102,6 +102,16 @@ public class AMConfiguration {
   public static final Boolean NODE_SELECT_HOTSPOT_EXCLUSION_RULE =
       CommonVars.apply("linkis.node.select.hotspot.exclusion.rule.enable", true).getValue();
 
+  public static final CommonVars<String> JOBHISTORY_SPRING_APPLICATION_NAME =
+      CommonVars.apply("wds.linkis.jobhistory.application.name", "linkis-ps-jobhistory");
+  public static final CommonVars<Integer> JOBINFO_UPDATE_RETRY_INTERVAL =
+      CommonVars.apply("wds.linkis.entrance.jobinfo.update.retry.interval", 2 * 1000);
+  public static final CommonVars<Integer> JOBINFO_UPDATE_RETRY_MAX_TIME =
+      CommonVars.apply("wds.linkis.entrance.jobinfo.update.retry.max.times", 3);
+  public static final int ERROR_CODE_DESC_LEN =
+      CommonVars.apply("linkis.error.code.desc.len", 512, "Error code description maximum length")
+          .getValue();
+
   public static String getDefaultMultiEngineUser() {
     String jvmUser = Utils.getJvmUser();
     return String.format(

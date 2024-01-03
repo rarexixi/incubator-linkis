@@ -24,8 +24,9 @@ import org.apache.linkis.ecm.core.launch.ProcessEngineConnLaunch
 import org.apache.linkis.ecm.server.LinkisECMApplication
 import org.apache.linkis.ecm.server.conf.ECMConfiguration
 import org.apache.linkis.ecm.server.conf.ECMConfiguration.MANAGER_SERVICE_NAME
-import org.apache.linkis.ecm.server.listener.EngineConnStopEvent
+import org.apache.linkis.ecm.server.listener.{EngineConnStopEvent, OnceJobStatusChangeEvent}
 import org.apache.linkis.ecm.server.service.LocalDirsHandleService
+import org.apache.linkis.governance.common.entity.ExecutionNodeStatus
 import org.apache.linkis.governance.common.utils.{JobUtils, LoggerUtils}
 import org.apache.linkis.manager.common.constant.AMConstant
 import org.apache.linkis.manager.common.entity.enumeration.NodeStatus
@@ -34,6 +35,7 @@ import org.apache.linkis.manager.common.protocol.engine.{
   EngineStopRequest
 }
 import org.apache.linkis.manager.engineplugin.common.launch.entity.EngineConnLaunchRequest
+import org.apache.linkis.manager.label.entity.engine.EngineConnMode
 import org.apache.linkis.manager.label.utils.LabelUtil
 import org.apache.linkis.rpc.Sender
 
@@ -50,19 +52,23 @@ abstract class ProcessEngineConnLaunchService extends AbstractEngineConnLaunchSe
 
   override def startEngineConnMonitorStart(
       request: EngineConnLaunchRequest,
-      conn: EngineConn
+      conn: EngineConn,
+      taskId: String,
+      engineConnMode: String
   ): Unit = {
     conn.getEngineConnLaunchRunner.getEngineConnLaunch match {
       case launch: ProcessEngineConnLaunch =>
         launch.getPid().foreach(conn.setPid)
-        processMonitorThread(conn, launch)
+        processMonitorThread(conn, launch, taskId, engineConnMode)
       case _ =>
     }
   }
 
   private def processMonitorThread(
       engineConn: EngineConn,
-      launch: ProcessEngineConnLaunch
+      launch: ProcessEngineConnLaunch,
+      taskId: String,
+      engineConnMode: String
   ): Unit = {
     Future {
       val tickedId = engineConn.getTickedId
@@ -104,6 +110,20 @@ abstract class ProcessEngineConnLaunchService extends AbstractEngineConnLaunchSe
                 canRetry
               )
             )
+
+          // 修改once任务状态
+          if (EngineConnMode.isOnceMode(engineConnMode)) {
+            Utils.tryQuietly {
+              // 修改once任务状态
+              LinkisECMApplication.getContext.getECMAsyncListenerBus.post(
+                OnceJobStatusChangeEvent(
+                  Integer.parseInt(taskId),
+                  ExecutionNodeStatus.Failed,
+                  "Failed to start EngineConn, reason: " + errorMsg + s"\n You can go to this path($logPath) to find the reason or ask the administrator for help"
+                )
+              )
+            }
+          }
           engineConn.setStatus(NodeStatus.ShuttingDown)
         } else {
           engineConn.setStatus(NodeStatus.Success)

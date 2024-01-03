@@ -19,25 +19,19 @@ package org.apache.linkis.entrance.interceptor
 
 import org.apache.linkis.bml.client.BmlClientFactory
 import org.apache.linkis.common.utils.Utils
+import org.apache.linkis.governance.common.constant.job.JobRequestConstants
 import org.apache.linkis.governance.common.entity.job.{JobRequest, OnceExecutorContent}
 import org.apache.linkis.governance.common.utils.OnceExecutorContentUtils
-import org.apache.linkis.governance.common.utils.OnceExecutorContentUtils.BmlResource
 import org.apache.linkis.manager.label.builder.factory.LabelBuilderFactoryContext
 import org.apache.linkis.manager.label.constant.LabelKeyConstant
 import org.apache.linkis.manager.label.entity.JobLabel
-import org.apache.linkis.manager.label.entity.engine.{
-  CodeLanguageLabel,
-  EngineConnModeLabel,
-  RunType
-}
 import org.apache.linkis.manager.label.entity.engine.EngineConnMode._
+import org.apache.linkis.manager.label.entity.engine.EngineConnModeLabel
 import org.apache.linkis.manager.label.utils.LabelUtil
-import org.apache.linkis.protocol.constants.TaskConstant
 import org.apache.linkis.protocol.utils.TaskUtils
 import org.apache.linkis.server.BDPJettyServerHelper
 
 import java.{lang, util}
-import java.io.ByteArrayInputStream
 
 import scala.collection.convert.WrapAsJava._
 import scala.collection.convert.WrapAsScala._
@@ -98,7 +92,7 @@ class OnceJobInterceptor extends EntranceInterceptor {
       Map(
         contentKey -> onceExecutorContentJsonStr,
         "label." + LabelKeyConstant.CODE_TYPE_KEY -> codeType,
-        "linkis.job.id" -> jobRequest.getId.toString
+        JobRequestConstants.JOB_ID -> jobRequest.getId.toString
       )
     )
     jobRequest

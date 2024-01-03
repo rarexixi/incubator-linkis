@@ -17,12 +17,14 @@
 
 package org.apache.linkis.ecm.server.service.impl
 
-import org.apache.linkis.DataWorkCloudApplication
 import org.apache.linkis.common.utils.Logging
 import org.apache.linkis.ecm.core.listener.{ECMEvent, ECMEventListener}
-import org.apache.linkis.ecm.server.listener.EngineConnStopEvent
+import org.apache.linkis.ecm.server.conf.ECMConfiguration.MANAGER_SERVICE_NAME
+import org.apache.linkis.ecm.server.listener.{EngineConnStopEvent, OnceJobStatusChangeEvent}
 import org.apache.linkis.ecm.server.service.EngineConnKillService
 import org.apache.linkis.manager.common.entity.enumeration.NodeStatus
+import org.apache.linkis.manager.common.protocol.engine.OnceJobStatusCallback
+import org.apache.linkis.rpc.Sender
 
 class ECMListenerService extends ECMEventListener with Logging {
 
@@ -41,6 +43,8 @@ class ECMListenerService extends ECMEventListener with Logging {
             .killYarnAppIdOfOneEc(engineStopRequest)
         }
       }
+    case OnceJobStatusChangeEvent(jobId, status, msg) =>
+      Sender.getSender(MANAGER_SERVICE_NAME).send(new OnceJobStatusCallback(jobId, status, msg))
     case _ =>
   }
 

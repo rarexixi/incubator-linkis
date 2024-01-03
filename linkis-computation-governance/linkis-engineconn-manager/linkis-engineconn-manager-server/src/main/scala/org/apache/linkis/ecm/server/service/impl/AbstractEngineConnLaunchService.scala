@@ -25,10 +25,11 @@ import org.apache.linkis.ecm.server.LinkisECMApplication
 import org.apache.linkis.ecm.server.conf.ECMConfiguration._
 import org.apache.linkis.ecm.server.engineConn.DefaultEngineConn
 import org.apache.linkis.ecm.server.hook.ECMHook
-import org.apache.linkis.ecm.server.listener.EngineConnStopEvent
+import org.apache.linkis.ecm.server.listener.{EngineConnStopEvent, OnceJobStatusChangeEvent}
 import org.apache.linkis.ecm.server.service.{EngineConnLaunchService, ResourceLocalizationService}
 import org.apache.linkis.ecm.server.util.ECMUtils
 import org.apache.linkis.governance.common.conf.GovernanceCommonConf
+import org.apache.linkis.governance.common.entity.ExecutionNodeStatus
 import org.apache.linkis.governance.common.utils.{ECPathUtils, JobUtils, LoggerUtils}
 import org.apache.linkis.manager.common.constant.AMConstant
 import org.apache.linkis.manager.common.entity.enumeration.NodeStatus
@@ -39,6 +40,7 @@ import org.apache.linkis.manager.common.protocol.engine.{
 }
 import org.apache.linkis.manager.engineplugin.common.launch.entity.EngineConnLaunchRequest
 import org.apache.linkis.manager.label.constant.LabelValueConstant
+import org.apache.linkis.manager.label.entity.engine.EngineConnMode
 import org.apache.linkis.manager.label.utils.LabelUtil
 import org.apache.linkis.rpc.Sender
 
@@ -67,6 +69,7 @@ abstract class AbstractEngineConnLaunchService extends EngineConnLaunchService w
   override def launchEngineConn(request: EngineConnLaunchRequest, duration: Long): EngineNode = {
     //  create engineConn/runner/launch
     val taskId = JobUtils.getJobIdFromStringMap(request.creationDesc.properties)
+    val engineConnMode = LabelUtil.getEngineConnMode(request.labels)
     LoggerUtils.setJobIdMDC(taskId)
     logger.info("TaskId: {} try to launch a new EngineConn with {}.", taskId: Any, request: Any)
     val conn = createEngineConn
@@ -103,7 +106,7 @@ abstract class AbstractEngineConnLaunchService extends EngineConnLaunchService w
         Array(taskId, request, conn.getServiceInstance): _*
       )
       // start ec monitor thread
-      startEngineConnMonitorStart(request, conn)
+      startEngineConnMonitorStart(request, conn, taskId, engineConnMode)
     } { t =>
       logger.error(
         "TaskId: {} init {} failed, {}, with request {} now stop and delete it. message: {}",
@@ -143,6 +146,19 @@ abstract class AbstractEngineConnLaunchService extends EngineConnLaunchService w
       LinkisECMApplication.getContext.getECMAsyncListenerBus.post(
         EngineConnStopEvent(conn, engineStopRequest)
       )
+
+      if (EngineConnMode.isOnceMode(engineConnMode)) {
+        Utils.tryQuietly {
+          // 修改once任务状态
+          LinkisECMApplication.getContext.getECMAsyncListenerBus.post(
+            OnceJobStatusChangeEvent(
+              Integer.parseInt(taskId),
+              ExecutionNodeStatus.Failed,
+              " wait init failed , reason " + ExceptionUtils.getRootCauseMessage(t)
+            )
+          )
+        }
+      }
       LoggerUtils.removeJobIdMDC()
       throw t
     }
@@ -165,7 +181,12 @@ abstract class AbstractEngineConnLaunchService extends EngineConnLaunchService w
     engineNode
   }
 
-  def startEngineConnMonitorStart(request: EngineConnLaunchRequest, conn: EngineConn): Unit
+  def startEngineConnMonitorStart(
+      request: EngineConnLaunchRequest,
+      conn: EngineConn,
+      taskId: String,
+      engineConnMode: String
+  ): Unit
 
   def createEngineConn: EngineConn = new DefaultEngineConn
 

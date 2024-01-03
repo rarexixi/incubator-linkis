@@ -33,14 +33,15 @@ import org.apache.linkis.entrance.parser.ParserUtils
 import org.apache.linkis.entrance.timeout.JobTimeoutManager
 import org.apache.linkis.entrance.utils.JobHistoryHelper
 import org.apache.linkis.governance.common.conf.GovernanceCommonConf
+import org.apache.linkis.governance.common.entity.ExecutionNodeStatus
 import org.apache.linkis.governance.common.entity.job.JobRequest
 import org.apache.linkis.governance.common.protocol.task.RequestTaskKill
 import org.apache.linkis.governance.common.utils.LoggerUtils
+import org.apache.linkis.manager.common.protocol.engine.EngineStopRequest
 import org.apache.linkis.manager.label.entity.engine.EngineConnMode
+import org.apache.linkis.manager.label.entity.entrance.ExecuteOnceLabel
 import org.apache.linkis.manager.label.utils.LabelUtil
 import org.apache.linkis.orchestrator.ecm.OnceEngineConnManager
-import org.apache.linkis.manager.common.protocol.engine.EngineStopRequest
-import org.apache.linkis.manager.label.entity.entrance.ExecuteOnceLabel
 import org.apache.linkis.protocol.constants.TaskConstant
 import org.apache.linkis.rpc.Sender
 import org.apache.linkis.rpc.conf.RPCConfiguration
@@ -105,34 +106,50 @@ abstract class EntranceServer extends Logging {
 
     val job = getEntranceContext.getOrCreateEntranceParser().parseToJob(jobRequest)
 
-
     val engineConnModeLabel = LabelUtil.getEngineConnModeLabel(jobRequest.getLabels)
     if (
-      null != engineConnModeLabel && EngineConnMode.isOnceMode(
-        engineConnModeLabel.getEngineConnMode
-      )
+        null != engineConnModeLabel && EngineConnMode.isOnceMode(
+          engineConnModeLabel.getEngineConnMode
+        )
     ) {
       logger.info(
         s"The job is a once job, submit to engine the engineConnMode is ${engineConnModeLabel.getEngineConnMode}"
       )
-      val node = OnceEngineConnManager.submitJob(jobRequest)
-      if (node != null) {
-        val infoMap = new util.HashMap[String, AnyRef]
+      Utils.tryCatch {
+        val node = OnceEngineConnManager.submitJob(jobRequest)
+        if (node != null) {
+          val infoMap = new util.HashMap[String, AnyRef]
 
-        infoMap.put(TaskConstant.EXECUTEAPPLICATIONNAME, node.getServiceInstance.getApplicationName)
-        infoMap.put(TaskConstant.ENGINE_INSTANCE, node.getServiceInstance.getInstance)
-        infoMap.put(TaskConstant.TICKET_ID, node.getTicketId)
-        JobHistoryHelper.updateJobRequestMetrics(jobRequest, null, infoMap)
+          infoMap.put(
+            TaskConstant.EXECUTEAPPLICATIONNAME,
+            node.getServiceInstance.getApplicationName
+          )
+          infoMap.put(TaskConstant.ENGINE_INSTANCE, node.getServiceInstance.getInstance)
+          infoMap.put(TaskConstant.TICKET_ID, node.getTicketId)
+          JobHistoryHelper.updateJobRequestMetrics(jobRequest, null, infoMap)
 
+          val jobReqUpdate = new JobRequest
+          jobReqUpdate.setId(jobRequest.getId)
+          jobReqUpdate.setReqId(jobRequest.getReqId)
+          jobReqUpdate.setExecutionCode(jobRequest.getExecutionCode)
+          jobReqUpdate.setMetrics(jobRequest.getMetrics)
+          getEntranceContext
+            .getOrCreatePersistenceManager()
+            .createPersistenceEngine()
+            .updateIfNeeded(jobReqUpdate)
+        }
+      } { t: Throwable =>
         val jobReqUpdate = new JobRequest
         jobReqUpdate.setId(jobRequest.getId)
         jobReqUpdate.setReqId(jobRequest.getReqId)
         jobReqUpdate.setExecutionCode(jobRequest.getExecutionCode)
-        jobReqUpdate.setMetrics(jobRequest.getMetrics)
+        jobReqUpdate.setStatus(ExecutionNodeStatus.Failed.toString)
+        jobReqUpdate.setErrorDesc(t.getMessage)
         getEntranceContext
           .getOrCreatePersistenceManager()
           .createPersistenceEngine()
           .updateIfNeeded(jobReqUpdate)
+        throw t
       }
       return job
     }
@@ -178,9 +195,8 @@ abstract class EntranceServer extends Logging {
       )
       logger.info(msg)
 
-
       job.getJobRequest.setReqId(job.getId())
-      if (jobTimeoutManager.timeoutCheck && JobTimeoutManager.hasTimeoutLabel(job)) {
+      if (timeoutCheck && JobTimeoutManager.hasTimeoutLabel(job)) {
         jobTimeoutManager.add(job.getId(), job)
       }
       job.getLogListener.foreach(_.onLogUpdate(job, msg))
