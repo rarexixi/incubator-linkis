@@ -102,7 +102,7 @@
     </snapshotRepository>
   </distributionManagement>
   <properties>
-    <revision>1.5.0-SNAPSHOT</revision>
+    <revision>1.5.0</revision>
 
     <zookeeper.version>3.5.9</zookeeper.version>
     <curator.version>4.2.0</curator.version>
@@ -132,6 +132,7 @@
     <pipeline.version>1</pipeline.version>
     <presto.version>0.234</presto.version>
     <nebula.version>3.0.0</nebula.version>
+    <doris.version>1.2.6</doris.version>
     <repl.version>1</repl.version>
     <python.version>python2</python.version>
     <seatunnel.version>2.1.2</seatunnel.version>
@@ -217,6 +218,7 @@
     <spring.boot.version>2.3.12.RELEASE</spring.boot.version>
     <spring-netflix.version>2.2.9.RELEASE</spring-netflix.version>
     <spring-cloud.version>Hoxton.SR12</spring-cloud.version>
+    <spring.cloud.nacos.version>2.2.9.RELEASE</spring.cloud.nacos.version>
 
     <!-- platform encoding override -->
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
@@ -1354,6 +1356,11 @@
             <artifactId>HikariCP</artifactId>
           </exclusion>
         </exclusions>
+      </dependency>
+      <dependency>
+        <groupId>com.alibaba.cloud</groupId>
+        <artifactId>spring-cloud-starter-alibaba-nacos-discovery</artifactId>
+        <version>${spring.cloud.nacos.version}</version>
       </dependency>
     </dependencies>
   </dependencyManagement>
